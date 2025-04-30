@@ -74,12 +74,20 @@ class MLA(nn.Module):
         
         # RoPE embedding
         self.rope = RoPEEmbedding(self.rope_dim * self.num_heads)
+        # Initialize cache for compressed KV and RoPE
+        self.register_buffer('cache_c_kv', None)
+        self.register_buffer('cache_k_rope', None)
 
     def forward(self, hidden_states, attention_mask=None, position_ids=None):
         batch_size, seq_len, _ = hidden_states.size()
         
         # KV Path
         c_kv = self.W_DKV(hidden_states)  # [B, T, dc_KV]
+        # Use cached c_kv if available
+        if self.cache_c_kv is not None:
+            c_kv = torch.cat([self.cache_c_kv, c_kv], dim=1)
+        # Update cache for next iteration
+        self.cache_c_kv = c_kv.detach()
         k_latent = self.W_UK(c_kv)  # [B, T, nh*dh]
         v_latent = self.W_UV(c_kv)  # [B, T, nh*dh]
         k_rope_proj = self.W_KR(hidden_states)  # [B, T, nh*d_R']
@@ -87,6 +95,11 @@ class MLA(nn.Module):
         # Reshape for RoPE
         k_rope = k_rope_proj.view(batch_size, seq_len, self.num_heads, self.rope_dim)
         k_rope = k_rope.transpose(1, 2)  # [B, nh, T, d_R']
+        # Use cached k_rope if available
+        if self.cache_k_rope is not None:
+            k_rope = torch.cat([self.cache_k_rope, k_rope], dim=2)
+        # Update cache for next iteration
+        self.cache_k_rope = k_rope.detach()
         
         # Query Path
         c_q = self.W_DQ(hidden_states)  # [B, T, dc_Q]
