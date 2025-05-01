@@ -289,7 +289,7 @@ if __name__ == "__main__":
                 encoded = np.array(encoded)
                 npz_distances.append(encoded)
 
-                label = labels.get(frame_idx, '<none>')
+                label = labels.get(str(frame_idx), '<none>')
                 label = tokenizer.tokenize(label)
                 npz_labels.append(label)
 
@@ -300,7 +300,7 @@ if __name__ == "__main__":
             npz_file_name = os.path.splitext(os.path.basename(folder_path))[0]
             np.savez(fr'dataset/more_datasets/{npz_file_name}',
                 distances=npz_distances,
-                frames=npz_labels)
+                labels=npz_labels)
 
             # Release the video capture object for the current video
             video_capture.release()
