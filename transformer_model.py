@@ -360,69 +360,110 @@ class DeepSeekV3Config:
 if __name__ == "__main__":
     import torch
     
-    def test_model_prediction():
+    def test_model_prediction(n: int = 5):
         # Create tiny model configuration
         class TinyConfig:
-            hidden_size = 128
-            intermediate_size = 256
-            num_attention_heads = 4
-            head_dim = 32
-            kv_compress_dim = 64
-            q_compress_dim = 128
-            rope_dim = 16
-            num_layers = 2
-            vocab_size = 1000  # Smaller vocab for testing
-            num_experts = 4
+            # Model architecture dimensions - Increased to roughly double size
+            hidden_size = 768
+            intermediate_size = 3072
+            num_attention_heads = 12
+            head_dim = 64
+            
+            # Compression dimensions for MLA (Scaled proportionally)
+            kv_compress_dim = 192 
+            q_compress_dim = 384
+            rope_dim = 32
+            
+            # Model structure
+            num_layers = 12
+            vocab_size = 16000
+            
+            # Mixture of Experts settings
+            num_experts = 32
             moe_top_k = 2
-            max_position_embeddings = 2048
+            
+            # Sequence length settings
+            max_position_embeddings = 1024
 
         # Initialize model and move to GPU if available
         config = TinyConfig()
         model = DeepSeekV3(config)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model.to(device)
+
+        # Calculate and print parameter/expert counts
+        total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Total Parameters: {total_params / 1e6:.2f}M")
+
+        if hasattr(config, 'num_experts') and config.num_experts > 0:
+            total_experts = config.num_experts * config.num_layers
+            active_experts = config.moe_top_k * config.num_layers
+            print(f"Total Experts: {total_experts}")
+            print(f"Active Experts per Token: {active_experts}")
+
+            # Calculate active parameters (approximate)
+            non_expert_params = 0
+            expert_params_per_layer = 0
+
+            # Embeddings and final norm/head
+            non_expert_params += sum(p.numel() for p in model.embed_tokens.parameters() if p.requires_grad)
+            non_expert_params += sum(p.numel() for p in model.norm.parameters() if p.requires_grad)
+            # lm_head shares weights with embed_tokens, so no need to add again
+
+            # Per-layer non-expert params
+            if config.num_layers > 0:
+                layer = model.layers[0]
+                non_expert_params_per_layer = 0
+                non_expert_params_per_layer += sum(p.numel() for p in layer.norm1.parameters() if p.requires_grad)
+                non_expert_params_per_layer += sum(p.numel() for p in layer.norm2.parameters() if p.requires_grad)
+                non_expert_params_per_layer += sum(p.numel() for p in layer.mla.parameters() if p.requires_grad)
+                non_expert_params_per_layer += sum(p.numel() for p in layer.moe.gate.parameters() if p.requires_grad)
+                non_expert_params += non_expert_params_per_layer * config.num_layers
+
+                # Expert params (for one expert)
+                expert_params_per_layer = sum(p.numel() for p in layer.moe.experts[0].parameters() if p.requires_grad)
+
+            active_params = non_expert_params + (expert_params_per_layer * active_experts)
+            print(f"Active Parameters per Token (Approx): {active_params / 1e6:.2f}M")
+        else:
+            print("Model does not use MoE.")
+            print(f"Active Parameters per Token: {total_params / 1e6:.2f}M") # All params are active
+
         model.eval()  # Set to evaluation mode
 
         # Generate random input tokens
         batch_size = 1
-        seq_len = 2
+        seq_len = n
         input_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len)).to(device)
         
         # Create position IDs
         position_ids = torch.arange(seq_len, dtype=torch.long, device=device).expand(batch_size, -1)
         
-        # First forward pass with both tokens
+        # First forward pass with all tokens
         with torch.no_grad():
             output = model(input_ids, position_ids=position_ids)
         
-        print(f"Output shape: {output.shape}")  # Should be [1, 2, 1000]
-        print(f"First token prediction: {output[0, 0].argmax().item()}")
-        print(f"Second token prediction: {output[0, 1].argmax().item()}")
+        print(f"Output shape: {output.shape}")  # Should be [1, n, 1000]
+        for i in range(n):
+            print(f"Token {i+1} prediction: {output[0, i].argmax().item()}")
         
         # Verify KV cache updates by processing tokens sequentially
         print("\nTesting KV cache updates...")
         # Reset cache
-        model.layers[0].mla.cache_c_kv = None
-        model.layers[0].mla.cache_k_rope = None
+        for layer in model.layers:
+            layer.mla.cache_c_kv = None
+            layer.mla.cache_k_rope = None
         
-        # Process first token
-        with torch.no_grad():
-            _ = model(input_ids[:, :1], position_ids=position_ids[:, :1])
-        
-        # Check cache shapes after first token
-        c_kv_cache = model.layers[0].mla.cache_c_kv
-        k_rope_cache = model.layers[0].mla.cache_k_rope
-        print(f"After 1st token - c_kv cache shape: {c_kv_cache.shape if c_kv_cache is not None else None}")
-        print(f"After 1st token - k_rope cache shape: {k_rope_cache.shape if k_rope_cache is not None else None}")
-        
-        # Process second token and verify cache updates
-        with torch.no_grad():
-            _ = model(input_ids[:, 1:2], position_ids=position_ids[:, 1:2])
-        
-        # Check cache shapes after second token
-        c_kv_cache = model.layers[0].mla.cache_c_kv
-        k_rope_cache = model.layers[0].mla.cache_k_rope
-        print(f"After 2nd token - c_kv cache shape: {c_kv_cache.shape if c_kv_cache is not None else None}")
-        print(f"After 2nd token - k_rope cache shape: {k_rope_cache.shape if k_rope_cache is not None else None}")
+        # Process tokens one by one
+        for i in range(n):
+            with torch.no_grad():
+                _ = model(input_ids[:, i:i+1], position_ids=position_ids[:, i:i+1])
+            
+            # Check cache shapes after each token
+            c_kv_cache = model.layers[0].mla.cache_c_kv
+            k_rope_cache = model.layers[0].mla.cache_k_rope
+            print(f"\nAfter token {i+1}:")
+            print(f"c_kv cache shape: {c_kv_cache.shape if c_kv_cache is not None else None}")
+            print(f"k_rope cache shape: {k_rope_cache.shape if k_rope_cache is not None else None}")
 
     test_model_prediction()
