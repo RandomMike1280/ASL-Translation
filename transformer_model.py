@@ -3,6 +3,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
+class MLP(nn.Module):
+    def __init__(self, input_dim:int, hidden_dims:list, output_dim:int):
+        super().__init__()
+        self.input_dim = input_dim
+        self.hidden_dims = hidden_dims
+        self.output_dim = output_dim
+
+        layers = []
+        prev_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layers(x)
+
 class RMSNorm(nn.Module):
     def __init__(self, dim, eps=1e-6):
         super().__init__()
@@ -306,7 +325,10 @@ class DeepSeekV3(nn.Module):
         self.hidden_size = config.hidden_size
         
         # Token embeddings
-        self.embed_tokens = nn.Embedding(self.vocab_size, self.hidden_size)
+        if config.token_embedding_type == 'tokens':
+            self.embed_tokens = nn.Embedding(self.vocab_size, self.hidden_size)
+        elif config.token_embedding_type == 'vector':
+            self.embed_tokens = MLP(input_dim=120, hidden_dims=[256, 128], output_dim=self.hidden_size)
         
         # Transformer blocks
         self.layers = nn.ModuleList([
@@ -355,6 +377,7 @@ class DeepSeekV3Config:
         self.num_experts = 64
         self.moe_top_k = 2
         self.max_position_embeddings = 8192
+        self.token_embedding_type = 'tokens'
 
 
 if __name__ == "__main__":
@@ -368,6 +391,7 @@ if __name__ == "__main__":
             intermediate_size = 3072
             num_attention_heads = 12
             head_dim = 64
+            token_embedding_type = 'tokens' # or 'vector'
             
             # Compression dimensions for MLA (Scaled proportionally)
             kv_compress_dim = 192 
@@ -376,7 +400,7 @@ if __name__ == "__main__":
             
             # Model structure
             num_layers = 12
-            vocab_size = 16000
+            vocab_size = 16
             
             # Mixture of Experts settings
             num_experts = 32
@@ -435,6 +459,8 @@ if __name__ == "__main__":
         batch_size = 1
         seq_len = n
         input_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len)).to(device)
+        print(f"Input shape: {input_ids.shape}")  # Should be [1, n]
+        print(f"Input tokens: {input_ids[0]}")  # Print the first sequence of tokens
         
         # Create position IDs
         position_ids = torch.arange(seq_len, dtype=torch.long, device=device).expand(batch_size, -1)
@@ -445,6 +471,8 @@ if __name__ == "__main__":
         
         print(f"Output shape: {output.shape}")  # Should be [1, n, 1000]
         for i in range(n):
+            if config.vocab_size < 100:
+                print(output[0, i])
             print(f"Token {i+1} prediction: {output[0, i].argmax().item()}")
         
         # Verify KV cache updates by processing tokens sequentially
