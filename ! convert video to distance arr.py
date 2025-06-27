@@ -138,14 +138,11 @@ def process_video(input_path: str, output_video_path: str, output_data_path: str
 if __name__ == "__main__":
     # 1. Define file paths
     for naem in [
-        r'How to Sign - NICE TO MEET YOU - Sign Language',
-        r'Learn How to Sign Nice to Meet You in ASL _ LearnHowToSign.org',
-        r'Top 10 Signs - NICE TO MEET YOU',
-        r'videoplayback'
+        r'7'
     ]:
         INPUT_VIDEO = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\raw_dataset\{naem}.mp4"
-        OUTPUT_VIDEO = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\skibd\{naem}.mp4"
-        OUTPUT_DATA = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\skibd\{naem}.npz"
+        OUTPUT_VIDEO = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\visuallizations\{naem}.mp4"
+        OUTPUT_DATA = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\distances\{naem}.npz"
 
         if not Path(INPUT_VIDEO).exists():
             raise Exception('path doesnt exist :3')
