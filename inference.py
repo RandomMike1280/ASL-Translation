@@ -25,7 +25,6 @@ with open('models/tokenizer.pkl', 'rb') as f:
 # Load classification model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Labels list must match training order
-classes = list(string.ascii_uppercase) + ['None']
 # model = Model(vocab_size=5)
 # model.load_state_dict(torch.load('models/model.pth', map_location=device, weights_only=True))
 model = torch.load('models/model.pth', map_location=device, weights_only=False)
@@ -43,6 +42,9 @@ if not cap.isOpened():
     exit()
 
 prev_time = 0
+
+pre_encoder = (torch.zeros(1, 1, 128), torch.zeros(1, 1, 128))
+pre_lstm = (torch.zeros(1, 1, 128), torch.zeros(1, 1, 128))
 
 while True:
     # Read frame from camera
@@ -70,37 +72,41 @@ while True:
     prev_time = current_time
     cv2.putText(image, f'FPS: {int(fps)}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    # Check for detected hands (left and/or right)
-    hand_landmarks_list = []
-    if results.left_hand_landmarks:
-        hand_landmarks_list.append(results.left_hand_landmarks)
-    if results.right_hand_landmarks:
-        hand_landmarks_list.append(results.right_hand_landmarks)
-    for hand_landmarks in hand_landmarks_list:
-            # Draw landmarks and connections
+    # Draw pose, face, and hand landmarks
+    drawing_specs = [
+        (results.pose_landmarks, mp_holistic.POSE_CONNECTIONS),
+        (results.face_landmarks, mp_holistic.FACEMESH_TESSELATION),
+        (results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS),
+        (results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS),
+    ]
+    for landmarks, connections in drawing_specs:
+        if landmarks:
             mp_drawing.draw_landmarks(
                 image,
-                hand_landmarks,
-                mp_holistic.HAND_CONNECTIONS,
+                landmarks,
+                connections,
                 small_dots,
-                small_lines)
+                small_lines
+            )
 
             # Compute wrist position for label placement
-            wrist_landmark = hand_landmarks.landmark[0]
+            wrist_landmark = landmarks.landmark[0]
             h, w, _ = image.shape
             text_x = int(wrist_landmark.x * w)
             text_y = int(wrist_landmark.y * h) - 20
 
             # Extract and track landmarks using helper functions
-            # landmarks_xy = extract_landmarks(results)
-            # distances = calculate_distances_vectorized(landmarks_xy, indices1, indices2)
-            # x_tensor = torch.from_numpy(distances).float().to(device)
-            # with torch.no_grad():
-            #     logits = model(x_tensor.unsqueeze(0))
-            #     pred_idx = logits.argmax(dim=1).item()
-            # label = classes[pred_idx]
-            # cv2.putText(image, label, (text_x, text_y),
-            #             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            landmarks_xy = extract_landmarks(results)
+            distances = calculate_distances_vectorized(landmarks_xy, indices1, indices2)
+            x_tensor = torch.from_numpy(distances).float().to(device)
+            with torch.no_grad():
+                y_pred, pre_encoder, pre_lstm = model(x_tensor.unsqueeze(0), pre_encoder, pre_lstm)
+                pred_idx = y_pred.argmax(dim=1).item()
+            label = tokenizer.decode([pred_idx])
+            if label[0] != "<None>":
+                print(pred_idx)
+            cv2.putText(image, label[0], (text_x, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
 
     # Display the resulting frame

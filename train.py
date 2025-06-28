@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 import torch.optim as optim
 import csv
 import pandas as pd
@@ -102,6 +103,20 @@ if __name__ == '__main__':
     print(f"Tokens: {tokenizer.id2token}")
     # sequential timestep iterator without padding
     class SequenceBatchIterator:
+        """
+        Iterator that yields batches of sequences and labels. Sequences are iterated over in
+        order of increasing time step. At each time step, sequences that have a label at the
+        current time step are included in the batch. The iterator stops when all sequences have
+        been exhausted.
+
+        Args:
+            samples (list of tuples): Each tuple is a sequence and its corresponding labels.
+            batch_size (int): The number of sequences to include in each batch.
+
+        Yields:
+            x_t (torch.tensor): A batch of sequences at the current time step.
+            y_t (torch.tensor): The labels for the sequences in the batch at the next time step.
+        """
         def __init__(self, samples, batch_size):
             self.samples = samples
             self.batch_size = batch_size
@@ -130,24 +145,30 @@ if __name__ == '__main__':
     seq_loader = SequenceBatchIterator(dataset.samples, batch_size=512)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
+    kv_div = nn.KLDivLoss(reduction='batchmean')
     model.to(device)
     model.train()
     max_len = max(seq[0].size(0) for seq in dataset.samples)
-    for epoch in range(20):
-        pre_encoder = (torch.zeros(1, 1, 64), torch.zeros(1, 1, 64))
-        pre_lstm = (torch.zeros(1, 1, 64), torch.zeros(1, 1, 64))
+    for epoch in range(5000000):
+        pre_encoder = (torch.zeros(1, 1, 128), torch.zeros(1, 1, 128))
+        pre_lstm = (torch.zeros(1, 1, 128), torch.zeros(1, 1, 128))
         print(f"Epoch {epoch}")
         running_loss = 0
         for x_t, y_t in tqdm(seq_loader):
             x_t, y_t = x_t.to(device), y_t.to(device)
+            x_t += torch.randn_like(x_t) * 0.005
             optimizer.zero_grad()
             y_pred, pre_encoder, pre_lstm = model(x_t, pre_encoder, pre_lstm)
+            uniform_distribution = torch.ones_like(y_pred) / y_pred.size(-1)
+            kv_loss = kv_div(F.log_softmax(y_pred, dim=-1), uniform_distribution)
             loss = criterion(y_pred.view(-1, y_pred.size(-1)), y_t.view(-1))
-            running_loss += loss
+            running_loss += loss + kv_loss
         running_loss.backward()
         optimizer.step()
         print(f"Loss: {running_loss.item() / max_len}")
-    
+        if epoch % 5 == 0:
+            torch.save(model, f"models/model_{epoch}.pth")
+            
     torch.save(model, r"models/model.pth")
     print("Model saved to models/model.pth")
 
