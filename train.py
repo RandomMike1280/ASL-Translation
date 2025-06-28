@@ -9,6 +9,8 @@ import os
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from network import Model
+from tqdm import tqdm, trange
+import pickle
 
 class Tokenizer:
     def __init__(self, tokens=None):
@@ -119,6 +121,10 @@ if __name__ == '__main__':
                     yield x_t, y_t
                     t += 1
 
+        def __len__(self):
+            # Return the number of batches (not timesteps) for compatibility with len()
+            return (len(self.samples) + self.batch_size - 1) // self.batch_size
+
     # use sequential timestep iterator
     model = Model(vocab_size=len(tokenizer.token2id))
     seq_loader = SequenceBatchIterator(dataset.samples, batch_size=512)
@@ -126,20 +132,24 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     model.to(device)
     model.train()
-    for epoch in range(10):
+    max_len = max(seq[0].size(0) for seq in dataset.samples)
+    for epoch in range(20):
         pre_encoder = (torch.zeros(1, 1, 64), torch.zeros(1, 1, 64))
         pre_lstm = (torch.zeros(1, 1, 64), torch.zeros(1, 1, 64))
         print(f"Epoch {epoch}")
-        for x_t, y_t in seq_loader:
+        running_loss = 0
+        for x_t, y_t in tqdm(seq_loader):
             x_t, y_t = x_t.to(device), y_t.to(device)
             optimizer.zero_grad()
             y_pred, pre_encoder, pre_lstm = model(x_t, pre_encoder, pre_lstm)
-        loss = criterion(y_pred.view(-1, y_pred.size(-1)), y_t.view(-1))
-        loss.backward()
+            loss = criterion(y_pred.view(-1, y_pred.size(-1)), y_t.view(-1))
+            running_loss += loss
+        running_loss.backward()
         optimizer.step()
-        print(f"Loss: {loss.item()}")
+        print(f"Loss: {running_loss.item() / max_len}")
     
+    torch.save(model, r"models/model.pth")
+    print("Model saved to models/model.pth")
 
-
-
-
+    with open('models/tokenizer.pkl', 'wb') as f:
+        pickle.dump(tokenizer, f)
