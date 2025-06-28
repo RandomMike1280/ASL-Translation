@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+from summary import ModelSummary
 
 class MLP(nn.Module):
     def __init__(self, input_dim:int, hidden_dims:list, output_dim:int):
@@ -320,6 +321,8 @@ class TransformerBlock(nn.Module):
 class DeepSeekV3(nn.Module):
     def __init__(self, config):
         super().__init__()
+        # Model's name
+        self.name = "DeepSeekASL-V1"
         self.config = config
         self.vocab_size = config.vocab_size
         self.hidden_size = config.hidden_size
@@ -414,6 +417,7 @@ if __name__ == "__main__":
         model = DeepSeekV3(config)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model.to(device)
+        ModelSummary(model, input_size=(1, 1024))
 
         # Calculate and print parameter/expert counts
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

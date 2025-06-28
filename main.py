@@ -10,7 +10,7 @@ from train_mlp import MLP
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
 # Limit detection to 1 hand, set confidence levels
-hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7, min_tracking_confidence=0.5)
+hands = mp_hands.Hands(max_num_hands=5, min_detection_confidence=0.7, min_tracking_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 
