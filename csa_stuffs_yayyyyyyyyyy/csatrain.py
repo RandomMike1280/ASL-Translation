@@ -99,21 +99,27 @@ class ASLTranslationDataset(Dataset):
 
         return input_sequence, target_indices
 
-# Custom collate function to handle variable-length input sequences
+# Custom collate function to handle variable-length input sequences and create padding mask
 def collate_batch(batch):
     # print("Using custom collate_batch") # Add this line to check if the function is called
-    # batch is a list of tuples: [(input_sequence1, target_indices1), (input_sequence2, target_indices2), ...]
     input_sequences, target_indices = zip(*batch)
 
-    # Pad the input sequences to the maximum length in the batch
-    # pad_sequence expects a list of tensors, and pads them to the length of the longest tensor
-    # batch_first=True makes the output shape (batch_size, seq_len, feature_dim)
+    # Get original lengths of input sequences
+    input_lengths = torch.LongTensor([len(seq) for seq in input_sequences])
+
+    # Pad the input sequences
     padded_input_sequences = pad_sequence(input_sequences, batch_first=True, padding_value=0) # Assuming 0 is a safe padding value for vectors
+
+    # Create the padding mask
+    # Mask is True where padding was applied
+    max_len = padded_input_sequences.shape[1]
+    input_padding_mask = torch.arange(max_len).unsqueeze(0) >= input_lengths.unsqueeze(1)
+    # input_padding_mask shape: (batch_size, max_len)
 
     # Target indices are already padded to MAX_TARGET_LEN in __getitem__, just stack them
     target_indices = torch.stack(target_indices, dim=0)
 
-    return padded_input_sequences, target_indices
+    return padded_input_sequences, target_indices, input_padding_mask
 
 
 # --- Training Setup ---
@@ -155,7 +161,7 @@ if __name__ == '__main__':
     # Ignore padding index in loss calculation
     criterion = nn.CrossEntropyLoss(ignore_index=dataset.pad_idx)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-        
+
 
     # --- Training Loop ---
 
@@ -166,15 +172,17 @@ if __name__ == '__main__':
             model.train() # Set model to training mode
             epoch_loss = 0
 
-            for i, (src, trg) in enumerate(dataloader):
-                src, trg = src.to(device), trg.to(device)
+            # Unpack the three items returned by the dataloader
+            for i, (src, trg, src_padding_mask) in enumerate(dataloader):
+                src, trg, src_padding_mask = src.to(device), trg.to(device), src_padding_mask.to(device)
 
                 optimizer.zero_grad()
 
                 # Forward pass
+                # Pass the source padding mask to the model
                 # The model's forward method expects target sequence for teacher forcing
                 # outputs shape: (batch_size, trg_seq_len, output_vocab_size)
-                outputs = model(src, trg)
+                outputs = model(src, trg, src_padding_mask)
 
                 # Reshape outputs and target for loss calculation
                 # Ignore the first token (<sos>) in the target and outputs for loss

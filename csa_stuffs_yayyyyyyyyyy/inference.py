@@ -12,8 +12,8 @@ import mediapipe as mp # Import mediapipe
 # We need the model architecture and the vocabulary
 from translator_model import Encoder, Decoder, Seq2Seq
 from csatrain import ASLTranslationDataset, SOS_TOKEN, EOS_TOKEN, PAD_TOKEN, NONE_TOKEN, MAX_TARGET_LEN # Import necessary components from train.py
-# Import functions from helper.py
-from helper import extract_landmarks, create_distance_indices, calculate_distances_vectorized, mp_holistic # Import mp_holistic as well
+# Import functions and drawing utilities from helper.py
+from helper import extract_landmarks, create_distance_indices, calculate_distances_vectorized, mp_holistic, mp_drawing, small_dots, small_lines # Import drawing utilities
 
 # --- Configuration --- #
 
@@ -21,12 +21,12 @@ from helper import extract_landmarks, create_distance_indices, calculate_distanc
 INPUT_DIM = 1106 # Dimension of your input vectors
 EMBED_DIM = 256 # Dimension for token embeddings
 HIDDEN_DIM = 256
-N_LAYERS = 2
-N_HEADS = 2
+N_LAYERS = 4
+N_HEADS = 4
 DROPOUT = 0.0 # Dropout is typically set to 0 for inference
 
 # Inference parameters
-MODEL_PATH = r'csa_stuffs_yayyyyyyyyyy\\checkpoints\\3.pth' # Path to your trained model checkpoint
+MODEL_PATH = r'csa_stuffs_yayyyyyyyyyy\\checkpoints\\20.pth' # Path to your trained model checkpoint
 DATA_DIRECTORY = 'dataset' # Path to your dataset folder (to load vocabulary)
 WINDOW_SIZE = 30 # Number of frames in the sliding window (adjust as needed)
 SLIDE_STEP = 10 # How many frames to slide the window by each step (adjust as needed)
@@ -132,15 +132,20 @@ while True:
             if len(vector_buffer) > 0:
                 vector_buffer.popleft()
 
-    # --- Display Camera Feed (Optional) ---
-    # You can uncomment these lines to see the camera feed with landmarks
-    # frame.flags.writeable = True
-    # frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-    # mp_drawing.draw_landmarks(frame, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, small_dots, small_lines)
-    # mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, small_dots, small_lines)
-    # mp_drawing.draw_landmarks(frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, small_dots, small_lines)
-    # mp_drawing.draw_landmarks(frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, small_dots, small_lines)
-    # cv2.imshow('ASL Translation', frame)
+    # --- Display Camera Feed with Landmarks ---
+    frame.flags.writeable = True
+    frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+    # Draw face landmarks
+    mp_drawing.draw_landmarks(frame, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, small_dots, small_lines)
+    # Draw pose landmarks
+    mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, small_dots, small_lines)
+    # Draw left hand landmarks
+    mp_drawing.draw_landmarks(frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, small_dots, small_lines)
+    # Draw right hand landmarks
+    mp_drawing.draw_landmarks(frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, small_dots, small_lines)
+
+    # Display the frame
+    cv2.imshow('ASL Translation', frame)
 
 
     # Check for quit key

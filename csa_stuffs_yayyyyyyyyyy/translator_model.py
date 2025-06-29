@@ -107,14 +107,14 @@ class Seq2Seq(nn.Module):
             # Store prediction
             outputs[:, t, :] = output
 
-            # Decide whether to use teacher forcing
-            teacher_force = torch.rand(1).item() < teacher_forcing_ratio
+            # Decide whether to use teacher forcing (per sample in batch)
+            teacher_force = (torch.rand(batch_size, device=trg.device) < teacher_forcing_ratio)
 
             # Get the highest predicted token index
             top1 = output.argmax(1)
 
-            # Use ground truth token as next input if teacher forcing, otherwise use predicted token
-            decoder_input = trg[:, t] if teacher_force else top1
+            # Use ground truth token as next input if teacher forcing, otherwise use predicted token (per sample)
+            decoder_input = torch.where(teacher_force, trg[:, t], top1)
 
         return outputs
 
