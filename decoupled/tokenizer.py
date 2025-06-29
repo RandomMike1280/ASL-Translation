@@ -145,6 +145,17 @@ class Tokenizer:
         return ' '.join(decoded_text)
 
 
+    def get_vocab_size(self):
+        return len(self.vocab)
+
+    def get_token_id(self, token):
+        return self.vocab.get(token)
+
+    def add_token(self, token):
+        if token not in self.vocab:
+            self.vocab[token] = len(self.vocab)
+            self.decode_vocab[len(self.decode_vocab)] = token
+
     def save(self, path):
         with open(path, 'w') as f:
             json.dump({
