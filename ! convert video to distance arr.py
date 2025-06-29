@@ -138,7 +138,7 @@ def process_video(input_path: str, output_video_path: str, output_data_path: str
 if __name__ == "__main__":
     # 1. Define file paths
     for naem in [
-        r'8'
+        r'9'
     ]:
         INPUT_VIDEO = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\raw_dataset\{naem}.mp4"
         OUTPUT_VIDEO = fr"C:\Users\csasd_rk5agwe\Desktop\idk thing\random numberz get tweaked omggg\ASL-Translation\dataset\visuallizations\{naem}.mp4"
